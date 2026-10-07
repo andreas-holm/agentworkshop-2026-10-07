@@ -101,19 +101,30 @@ smala rutor kan ge täta symboler. Detaljerna bevarar källorna.
 Kontroller omfattar exakt tidsplacering, skala, grupper, täckningsluckor,
 sortering, säkra texter, minnestak och verklig serverintegration.
 
-## Animationer och ”Ohh yeah”
+## Animationer och röst
 
 Endast frontend; backend och `stämning.byte` är oförändrade.
 - Nya markörer, jämfört med förra lyckade hämtningen, poppar in (cirka 300 ms).
   Första hämtningen sätter bara baslinjen och animerar inget.
 - Kanalens högsta vågtopp i fönstret pulserar med en glöd.
 - Nya ❤️-markörer (omtanke) ger ett svävande hjärta i kanalens ruta.
-- Röst via webbläsarens talsyntes (Web Speech API): ”Ohh yeah” när nya
+- Röst via webbläsarens talsyntes (Web Speech API): ”Bra jobbat, gubbar!” när nya
   markörer för uppskattning eller omtanke dyker upp. Avstängd tills användaren
   klickar 🔊 (webbläsare blockerar ljud utan klick, och rutan är gemensam),
   högst en gång per 30 sekunder. Saknas talsyntes inaktiveras knappen.
+  Klicket säger frasen direkt (låser upp talsyntes i Chrome/Safari); fel visas på knappen.
+- Ljus kvinnoröst: Web Speech anger inte kön, så kända svenska kvinnoröster väljs på namn
+  (Alva/Klara på macOS, Hedvig på Windows), annars första svenska röst; tonhöjd 1.6.
 - Reducerad rörelse stänger av alla animationer men inte den valda rösten.
 
 Beslut: talsyntes framför ljudfil (ingen tillgång att distribuera eller
 licensiera); utlösning på nya markörer framför räknarökning, eftersom antalet
 i fönstret också minskar när gamla markörer rullar ut.
+
+## Läsbar rad i stämning.byte
+
+`nyttolast.rad` ligger först och är en mening utan JSON, till exempel
+”I #bygge de senaste 10 minuterna (20 inlägg): 12 frågor, 1 hinder,
+1 uppskattning och 1 uttryck av omtanke. Det är språksignaler, inte känslor.”
+Minnet och Rösten föredrar `rad`; utan den citerades rå JSON som Röstens
+skydd sedan klippte bort helt (team-martin, inlägg 1037).
