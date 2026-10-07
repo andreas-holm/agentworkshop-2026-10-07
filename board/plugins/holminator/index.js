@@ -168,7 +168,8 @@ const UPPDRAG = [
 function slaUppInre(q, egetInlagg) {
   // Engelska förmågenamn i frågan översätts: "who builds the voice" frågar efter Rösten.
   const fragOrd = ord(q).map(w => (ENGELSKA[w] ? ENGELSKA[w].toLowerCase() : w));
-  const lc = q.toLowerCase();
+  // Händelsetyper i frågan (bild.klar, svar.utkast) är namn, inte avsikter: "klar" i bild.klar är ingen leverans.
+  const lc = q.toLowerCase().replace(/[a-zåäö_]+\.[a-zåäö_.]+/g, ' ');
   const formagor = [...st.formagor.values()];
 
   for (const u of UPPDRAG) {
@@ -185,7 +186,7 @@ function slaUppInre(q, egetInlagg) {
   // Krockar: två team som ropat samma förmåga.
   if (/krock|dubbel|conflict|clash|samma förmåga|same capability/.test(lc)) {
     const oppna = st.krockar.filter(x => !x.löst);
-    const traff = oppna.filter(x => fragOrd.some(w => sammaStam(x.förmåga.toLowerCase(), w) || sammaStam(x.team, w) || sammaStam(x.hos, w)));
+    const traff = oppna.filter(x => fragOrd.some(w => sammaStam(x.förmåga.toLowerCase(), w)) || nämnerTeam(x.team, fragOrd) || nämnerTeam(x.hos, fragOrd));
     const lista = traff.length ? traff : oppna;
     if (!lista.length) {
       const losta = st.krockar.length;
@@ -203,10 +204,10 @@ function slaUppInre(q, egetInlagg) {
     const lev = [...st.leveranser.values()].sort((a, b) => a.ts - b.ts);
     const formagaFor = t => formagor.find(x => x.team === t);
     // Frågan kan nämna teamet eller förmågan: "har rösten levererat?" gäller mikael.
-    const nämnda = formagor.filter(x => fragOrd.some(w => sammaStam(x.förmåga.toLowerCase(), w) || sammaStam(x.team, w)));
+    const nämnda = formagor.filter(x => fragOrd.some(w => sammaStam(x.förmåga.toLowerCase(), w)) || nämnerTeam(x.team, fragOrd));
     const ejKlara = nämnda.filter(x => !st.leveranser.has(x.team));
     if (!lev.length && !nämnda.length) return { svar: 'Minnet har inte sett någon leverans än.', styrka: 40, källor: [] };
-    const traff = lev.filter(x => fragOrd.some(w => sammaStam(x.team, w)) || nämnda.some(n => n.team === x.team));
+    const traff = lev.filter(x => nämnerTeam(x.team, fragOrd) || nämnda.some(n => n.team === x.team));
     if (!traff.length && ejKlara.length) {
       return {
         svar: ejKlara.map(x => `${x.team} bygger ${x.förmåga} och har inte levererat än`).join('; ') + '.',
@@ -231,16 +232,20 @@ function slaUppInre(q, egetInlagg) {
       const lediga = alla.filter(a => !st.formagor.has(a.toLowerCase()));
       return { svar: lediga.length ? `Lediga förmågor enligt Minnet: ${lediga.join(', ')}.` : 'Alla förmågor i PROJEKT.md är tagna.', styrka: 75, källor: [] };
     }
-    const traff = formagor.filter(x => fragOrd.some(w => sammaStam(x.förmåga.toLowerCase(), w) || sammaStam(x.team.toLowerCase(), w)));
-    const lista = traff.length ? traff : formagor;
-    const rad = x => `${x.team} bygger ${x.förmåga}` + (st.leveranser.has(x.team) ? ' (levererad)' : '');
-    // Frågar man om en enda förmåga, ta med vad den senast sa på bussen: "vad händer i pulsen och vem driver det?".
-    const sig = traff.length === 1 ? senasteSignalFran(traff[0].team) : null;
-    return {
-      svar: (traff.length ? '' : `${formagor.length} förmågor är tagna: `) + lista.map(rad).join(', ') + '.' + (sig ? ' ' + signalText(sig) : ''),
-      styrka: traff.length ? (traff.every(x => x.källa === 'ledning') ? 95 : 85) : 70,
-      källor: lista.slice(0, 4).map(x => ({ id: x.inlägg, från: x.källa === 'ledning' ? 'ledarens-agent' : x.team, kanal: 'bygge', utdrag: `${x.team} bygger ${x.förmåga}` })),
-    };
+    const traff = formagor.filter(x => fragOrd.some(w => sammaStam(x.förmåga.toLowerCase(), w)) || nämnerTeam(x.team, fragOrd));
+    const okänt = !traff.length && [...kvarterUtanFormaga()].some(t => nämnerTeam(t, fragOrd));
+    // Ett kvarter som inte ropat någon förmåga (ateljen): hela listan vore fel svar, låt signalerna svara nedan.
+    if (!okänt) {
+      const lista = traff.length ? traff : formagor;
+      const rad = x => `${x.team} bygger ${x.förmåga}` + (st.leveranser.has(x.team) ? ' (levererad)' : '');
+      // Frågar man om en enda förmåga, ta med vad den senast sa på bussen: "vad händer i pulsen och vem driver det?".
+      const sig = traff.length === 1 ? senasteSignalFran(traff[0].team) : null;
+      return {
+        svar: (traff.length ? '' : `${formagor.length} förmågor är tagna: `) + lista.map(rad).join(', ') + '.' + (sig ? ' ' + signalText(sig) : ''),
+        styrka: traff.length ? (traff.every(x => x.källa === 'ledning') ? 95 : 85) : 70,
+        källor: lista.slice(0, 4).map(x => ({ id: x.inlägg, från: x.källa === 'ledning' ? 'ledarens-agent' : x.team, kanal: 'bygge', utdrag: `${x.team} bygger ${x.förmåga}` })),
+      };
+    }
   }
 
   // Beslut: det som skrivits med BESLUT eller DECISION. Inte "röst" ensamt, det matchar Rösten.
@@ -292,9 +297,23 @@ function senasteSignal(fragOrd) {
     const e = st.handelser[i];
     if (/^(minne|fråga|kunskap|svar)\./.test(e.typ)) continue;
     const forsta = e.typ.split('.')[0];
-    if (fragOrd.some(w => sammaStam(forsta, w))) return e;
+    if (fragOrd.some(w => sammaStam(forsta, w)) || nämnerTeam(e.kvarter, fragOrd)) return e;
   }
   return null;
+}
+// Ett team nämns om alla dess särskiljande delar finns i frågan: "team-martin" kräver "martin", inte bara "team".
+const GENERISKA = new Set(['team', 'the', 'agent', 'agenten', 'bot']);
+function nämnerTeam(team, fragOrd) {
+  const delar = String(team || '').toLowerCase().split(/[^a-zåäö0-9]+/).filter(d => d.length >= 3 && !GENERISKA.has(d));
+  return delar.length > 0 && delar.every(d => fragOrd.some(w => sammaStam(d, w)));
+}
+// Kvarter som skickat på bussen eller skrivit på Torget men inte ropat någon förmåga.
+function kvarterUtanFormaga() {
+  const med = new Set([...st.formagor.values()].map(x => x.team));
+  const ut = new Set();
+  for (const e of st.handelser) if (!med.has(e.kvarter)) ut.add(e.kvarter);
+  for (const t of st.team) if (!med.has(t) && !LEDNING.test(t)) ut.add(t);
+  return ut;
 }
 function senasteSignalFran(team) {
   for (let i = st.handelser.length - 1; i >= 0 && i >= st.handelser.length - 300; i--) {
@@ -316,11 +335,13 @@ function slaUpp(fraga, egetInlagg) {
   return u;
 }
 
-// Har någon redan frågat ungefär samma sak?
-function tidigareFraga(fraga) {
+// Har någon redan frågat ungefär samma sak och fått samma svar? Mallfrågor ("X har börjat skicka Y, vad bygger X")
+// liknar varandra men gäller olika saker, så svaret måste också vara detsamma.
+function tidigareFraga(fraga, svar) {
   const a = new Set(ord(fraga));
   if (a.size < 2) return null;
   for (let i = st.svar.length - 1; i >= 0; i--) {
+    if (svar != null && !String(st.svar[i].svar).startsWith(svar)) continue;
     const b = new Set(ord(st.svar[i].fråga));
     let gem = 0; for (const w of a) if (b.has(w)) gem++;
     if (gem / Math.max(a.size, b.size) >= 0.6) return st.svar[i];
@@ -389,7 +410,7 @@ module.exports = {
     if (!fraga) return;
     st.besvarat.add(e.id);
     const u = slaUpp(fraga, Number(n.inlägg) || null);
-    const forr = tidigareFraga(fraga);
+    const forr = tidigareFraga(fraga, utdrag(u.svar, 400));
     const svar = u.svar + (forr ? ` (Samma fråga ställdes ${klocka(forr.ts)}.)` : '');
     const nyttolast = { fråga: utdrag(fraga, 200), svar: utdrag(svar, 400), källor: u.källor, kanal: n.kanal, inlägg: n.inlägg };
     const h = skicka(ctx, 'minne.träff', { orsak: e.id, styrka: u.styrka, nyttolast });

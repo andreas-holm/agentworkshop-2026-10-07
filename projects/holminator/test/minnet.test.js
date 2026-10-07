@@ -322,3 +322,35 @@ test('krockfråga utan krockar och engelsk krockfråga', () => {
   m.mod.onMessage(post('leif', 'bygge', 'leif takes the voice'), m.ctx);
   assert.match(m.fraga('any conflict over the voice?').nyttolast.svar, /leif ropade Rösten, som mikael redan har/);
 });
+
+// Fall från livetestet 10:08 (inlägg 324 och 362).
+test('"vilka team har levererat" listar alla, ordet "team" pekar inte ut team-martin', () => {
+  const p = torget();
+  p.push(post('release-agenten', 'bygge', 'PR inne från team-martin: https://github.com/x/y/pull/8'));
+  const m = nyttMinne(p);
+  const s = m.fraga('@kollegan vilka team har levererat hittills?');
+  assert.match(s.nyttolast.svar, /^2 team har levererat: holminator \(Minnet\).*team-martin \(Pulsen\)/);
+  assert.match(m.fraga('har team-martin levererat?').nyttolast.svar, /^team-martin \(Pulsen\) levererade/);
+  assert.match(m.fraga('vem i teamet bygger rösten?').nyttolast.svar, /^mikael bygger Rösten/);
+});
+
+test('händelsetyper i frågan tolkas inte som avsikt, okänt kvarter besvaras med dess signal', () => {
+  const h = [{ id: 600, ts: Date.now() - 30000, typ: 'bild.klar', kvarter: 'ateljen', styrka: 50, nyttolast: { till: 'surret' } }];
+  const m = nyttMinne(torget(), h);
+  const s = m.fraga('@kollegan ateljen har precis börjat skicka bild.klar. Vad bygger ateljen, och vem lyssnar på dem?');
+  assert.doesNotMatch(s.nyttolast.svar, /levererat|förmågor är tagna/);
+  assert.match(s.nyttolast.svar, /ateljen bild\.klar/);
+  assert.equal(s.nyttolast.källor[0].från, 'ateljen');
+});
+
+test('mallfrågor om olika saker får ingen "samma fråga"-not, riktig upprepning får det', () => {
+  const h = [{ id: 601, ts: Date.now() - 30000, typ: 'bild.klar', kvarter: 'ateljen', nyttolast: {} },
+    { id: 602, ts: Date.now() - 20000, typ: 'karta.ritad', kvarter: 'leiost', nyttolast: {} }];
+  const m = nyttMinne(torget(), h);
+  m.fraga('ateljen har precis börjat skicka bild.klar. Vad bygger ateljen, och vem lyssnar på dem?');
+  const b = m.fraga('leiost har precis börjat skicka karta.ritad. Vad bygger leiost, och vem lyssnar på dem?');
+  assert.match(b.nyttolast.svar, /leiost karta\.ritad/);
+  assert.doesNotMatch(b.nyttolast.svar, /Samma fråga/);
+  const c = m.fraga('leiost har precis börjat skicka karta.ritad. Vad bygger leiost, och vem lyssnar?');
+  assert.match(c.nyttolast.svar, /Samma fråga ställdes/);
+});
